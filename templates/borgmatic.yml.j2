@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+
+location:
+  local_path: /usr/local/bin/borg
+  source_directories: {{ backup_clt__vars_sources |union(backup_clt__host_sources) |union(backup_clt__group_sources) |to_json }}
+  repositories:
+    - backup-master:{{ backup_srv__backup_dest_dir }}/{{ inventory_hostname }}
+  exclude_patterns: {{ backup_clt__vars_exclude_patterns |union(backup_clt__host_exclude_patterns) |union(backup_clt__group_exclude_patterns) |to_json }}
+  exclude_caches: true
+  exclude_if_present: .nobackup
+storage:
+  ssh_command: ssh -i /root/.ssh/backup -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o HostName=localhost -p {{ backup__tun_port |quote }} -l {{ backup_srv__backup_user |quote}} -i {{ backup_clt__vars_ssh_key_file |quote }}
+  archive_name_format: "{hostname}-{now:%Y-%m-%dT%H:%M:%S}"
+retention:
+  keep_daily: {{ backup_clt__keep_daily }}
+  keep_weekly: {{ backup_clt__keep_weekly }}
+  keep_monthly: {{ backup_clt__keep_monthly }}
+  keep_yearly: {{ backup_clt__keep_yearly }}
+  prefix: "{hostname}-"
+hooks:
+  before_backup: {{ backup_clt__host_hook_before |union(backup_clt__group_hook_before) |to_json }}
+  after_backup: {{ backup_clt__host_hook_after |union(backup_clt__group_hook_after) |to_json }}
+  on_error: {{ backup_clt__host_hook_error |union(backup_clt__group_hook_error) |to_json }}

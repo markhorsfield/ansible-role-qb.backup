@@ -1,0 +1,41 @@
+---
+
+backup_clt__vars_packages:
+  - libc6
+  - python3
+  - python3-dev
+  - python3-pip
+  - python3-setuptools
+
+backup_clt__vars_ssh_key_file: /root/.ssh/backup
+backup_clt__vars_config_dir: /etc/qb.backup
+backup_clt__vars_backup_key_file: "{{ backup_clt__vars_config_dir }}/BACKUP_PASSPHRASE"
+backup_clt__vars_backup_config_file: "{{ backup_clt__vars_config_dir }}/borgmatic.yml"
+
+
+backup_clt__vars_sources:
+  - /boot
+  - /etc
+  - /home
+  - /opt
+  - /root
+  - /srv
+  - /usr
+  - /var
+
+# https://borgbackup.readthedocs.io/en/stable/usage/help.html#borg-help-patterns
+# We want to keep /var/lib/docker/volumes by default as it could contain
+# volumes used for persistent data, it can always be excluded for some hosts by
+# adding it to backup_clt__*_exclude_patterns.
+backup_clt__vars_exclude_patterns:
+  - "*.pyc"
+  - "*.swp"
+  - "*.swo"
+  - "*/lost+found"
+  - "*/tmp"
+  - "*/.cache"
+  - /var/cache
+  - re:^/var/lib/docker/(?!volumes)
+  - /var/lock
+  - /var/run
+  - /var/tmp

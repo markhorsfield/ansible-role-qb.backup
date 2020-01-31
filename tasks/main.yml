@@ -1,0 +1,121 @@
+---
+
+- name: Install required packages
+  apt:
+    name: "{{ backup_clt__vars_packages |union(backup_clt__host_packages) |union(backup_clt__group_packages) }}"
+    state: present
+
+# cf. https://github.com/ansible/ansible/issues/47361
+- name: Install Python 2 setuptools if needed
+  apt:
+    name: python-setuptools
+    state: present
+  when: ansible_python.version.major == 2
+
+- name: Download borg
+  get_url:
+    url: "{{ backup__borg_url }}"
+    dest: /usr/local/bin/borg{{ backup__borg_version }}
+    mode: 0755
+
+- name: Install borg
+  file:
+    src: borg{{ backup__borg_version }}
+    dest: /usr/local/bin/borg
+    state: link
+
+# Borgmatic depends on `ruamel.yaml>0.15.0,<0.17.0`. However,
+# `ruamel.yaml==0.15.94` is the latest version that supports Python 3.4, which
+# is the Python 3 version in use for Debian Jessie.
+# Also, `python3-setuptools` is in a really old version on Debian Jessie
+# (5.5.1), so it doesn't have the necessary options to build this version of
+# ruamel.yaml (which needs at least version 24.2.0, maybe newer). We are forced
+# to install a new version here.
+# This block is only executed for Debian Jessie hosts
+- block:
+  - name: Install setuptools for Debian Jessie
+    pip:
+      name: setuptools
+      version: 43.0.0 # last version to support Python 3.4
+      executable: /usr/bin/pip3
+      extra_args: --user
+
+  - name: Fix broken borgmatic dependency for Debian Jessie
+    pip:
+      name: ruamel.yaml
+      version: 0.15.94
+      executable: /usr/bin/pip3
+      extra_args: --user
+  when: ansible_distribution == 'Debian' and ansible_distribution_release == 'jessie'
+
+- name: Install borgmatic
+  pip:
+    name: borgmatic
+    executable: /usr/bin/pip3
+    extra_args: --user
+
+- name: Generate ssh key
+  user:
+    name: root
+    generate_ssh_key: yes
+    ssh_key_type: ed25519
+    ssh_key_file: "{{ backup_clt__vars_ssh_key_file }}"
+    ssh_key_comment: backup@{{ inventory_hostname }}
+  register: backup_clt__reg_user
+
+- name: Remove obsolete authorized ssh keys
+  authorized_key:
+    user: root
+    key: "{{ item }}"
+    state: absent
+  loop: "{{ backup_clt__old_srv_ssh_pubkeys }}"
+
+- name: Create configuration directory
+  file:
+    path: "{{ backup_clt__vars_config_dir }}"
+    state: directory
+    owner: root
+    mode: 0700 # octal
+
+- stat:
+    path: "{{ backup_clt__vars_backup_key_file }}"
+  register: backup_clt__reg_backup_key_stat
+
+- when: not backup_clt__reg_backup_key_stat.stat.exists
+  block:
+    - name: Generate backup passphrase
+      set_fact:
+        backup_clt__fact_backup_key: "{{ lookup('password', backup_controller__saved_passphrases_dir + '/' + ansible_host + ' chars=ascii_letters,digits length=32') }}"
+
+    - name: Upload backup passphrase
+      copy:
+        dest: "{{ backup_clt__vars_backup_key_file }}"
+        content: "{{ backup_clt__fact_backup_key }}"
+        owner: root
+        mode: 0400 # octal
+      notify: Warn user about generated passphrase
+
+- name: Generate borgmatic configuration file
+  template:
+    src: borgmatic.yml.j2
+    dest: "{{ backup_clt__vars_backup_config_file }}"
+    owner: root
+    mode: 0600 # octal
+
+- name: Authorize backup server to ssh on this client
+  authorized_key:
+    user: root
+    key: "{{ backup_clt__srv_ssh_pubkey }}"
+    key_options: environment="BORG_PASSCOMMAND=cat {{ backup_clt__vars_backup_key_file }}",command="/root/.local/bin/borgmatic -v2 -c {{ backup_clt__vars_backup_config_file }} --init --encryption repokey --create --check --prune"
+    comment: backup-master
+
+- name: Authorize this client to send its backups to the server
+  delegate_to: "{{ item }}"
+  become: false # Not needed, we are directly root in the jail
+  authorized_key:
+    user: "{{ backup_srv__backup_user }}"
+    key: "{{ backup_clt__reg_user.ssh_public_key }}"
+    key_options: 'from="localhost,127.0.0.1,::1",command="/usr/local/bin/borg serve --append-only --restrict-to-repository {{ backup_srv__backup_dest_dir }}/{{ inventory_hostname }}"'
+    comment: backup@{{ inventory_hostname }}
+  loop:
+    - "{{ groups['backup_jail'][0] }}" # Workaround to reference the delegate_to host based on its group

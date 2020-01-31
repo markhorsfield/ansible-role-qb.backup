@@ -1,0 +1,6 @@
+---
+
+- name: Warn user about generated passphrase
+  debug:
+    msg: "New borg repo key passphrases have been generated in '{{ backup_controller__saved_passphrases_dir }}', please save them in a secure place, they will be needed to access the backup in case of data loss!"
+  run_once: true

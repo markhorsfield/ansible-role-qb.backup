@@ -1,0 +1,38 @@
+---
+
+backup__tun_port: 64064
+backup__borg_version: 1.1.10
+backup__borg_url: https://github.com/borgbackup/borg/releases/download/{{ backup__borg_version }}/borg-linux64
+
+# Ansible Controller
+
+# This path MUST be an absolute path, MUST NOT contain spaces, and MUST NOT finish with '/'!
+backup_controller__saved_passphrases_dir: /tmp/backup-passphrases
+
+# Client
+
+backup_clt__host_packages: []
+backup_clt__group_packages: []
+
+backup_clt__host_sources: []
+backup_clt__group_sources: []
+backup_clt__host_exclude_patterns: []
+backup_clt__group_exclude_patterns: []
+
+backup_clt__host_hook_before: []
+backup_clt__group_hook_before: []
+backup_clt__host_hook_after: []
+backup_clt__group_hook_after: []
+backup_clt__host_hook_error: []
+backup_clt__group_hook_error: []
+
+backup_clt__keep_daily: 7
+backup_clt__keep_weekly: 4
+backup_clt__keep_monthly: 12
+backup_clt__keep_yearly: 10
+
+# Server
+
+backup_srv__backup_user: backup
+backup_srv__backup_dest_dir: /mnt/backup
+backup_srv__host_config_dir: /etc/backup/host
